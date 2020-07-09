@@ -48,9 +48,12 @@
     <Compile Include="Attributes\OneToOneAttribute.cs" />
     <Compile Include="Attributes\PKAttribute.cs" />
     <Compile Include="Attributes\TableAttribute.cs" />
-    <Compile Include="Context\AppContext.cs" />
+    <Compile Include="Context\ApplicationContext.cs" />
+    <Compile Include="Interfaces\IRepository.cs" />
     <Compile Include="ORMHelpers\Helper.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Repositories\Repository.cs" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -11,6 +11,6 @@ namespace AppClient.Core
         public int UserId { get; set; }
 
         [Member]
-        public DateTime? CreatedAt { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 }   

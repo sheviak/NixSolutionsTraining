@@ -3,11 +3,12 @@ using System.Runtime.CompilerServices;
 
 namespace ORM.Attributes
 {
-    public class OneToManyAttribute : Attribute
+    [AttributeUsage(AttributeTargets.Property)]
+    public class OneToMany : Attribute
     {
         public string Name { get; set; }
 
-        public OneToManyAttribute([CallerMemberName] string name = null)
+        public OneToMany([CallerMemberName] string name = null)
         {
             this.Name = name;
         }

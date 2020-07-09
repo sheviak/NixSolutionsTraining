@@ -23,45 +23,14 @@ namespace ORM.Helpers
 
         public static bool IsNullOrEmptyCollection<T>(IEnumerable<T> collection) => collection == null || !collection.Any();
 
-        public static List<PropertyInfo> GetOneToOneProperties(Type item)
+        public static List<PropertyInfo> GetPropertiesByRelations<T>(Type item)
         {
             var properties = item
                 .GetProperties()
-                .Where(x => Attribute.IsDefined(x, typeof(OneToOneAttribute)))
+                .Where(x => Attribute.IsDefined(x, typeof(T)))
                 .ToList();
 
             return properties;
-        }
-
-        public static IList<PropertyInfo> GetCollectionOneToManyProperties(Type item)
-        {
-            var properties = item
-                .GetProperties()
-                .Where(x => Attribute.IsDefined(x, typeof(OneToManyAttribute)))
-                .ToList();
-
-            return properties;
-        }
-
-        public static IList<PropertyInfo> GetCollectionManyToManyProperties(Type item)
-        {
-            var properties = item
-                .GetProperties()
-                .Where(x => Attribute.IsDefined(x, typeof(ManyToManyAttribute)))
-                .ToList();
-
-            return properties;
-        }
-
-        public static List<PropertyInfo> GetModelForeignKey<T>(T item)
-        {
-            var fk = item
-                .GetType()
-                .GetProperties()
-                .Where(x => Attribute.IsDefined(x, typeof(FKAttribute)))
-                .ToList();
-
-            return fk;
         }
 
         public static PropertyInfo GetPrimaryKeyProperties<T>(T item)
@@ -78,10 +47,7 @@ namespace ORM.Helpers
             return item
                 .GetType()
                 .GetProperties()
-                .Where(x => Attribute.IsDefined(x, typeof(MemberAttribute)) &&
-                            !Attribute.IsDefined(x, typeof(OneToManyAttribute)) &&
-                            !Attribute.IsDefined(x, typeof(FKAttribute)) &&
-                            !Attribute.IsDefined(x, typeof(PKAttribute)))
+                .Where(x => Attribute.IsDefined(x, typeof(MemberAttribute)) && !Attribute.IsDefined(x, typeof(PKAttribute)))
                 .ToList();
         }
 

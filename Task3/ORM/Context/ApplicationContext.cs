@@ -10,7 +10,7 @@ using ORM.Helpers;
 
 namespace ORM.Context
 {
-    public enum Action
+    enum Action
     {
         Insert,
         Update,
@@ -18,18 +18,20 @@ namespace ORM.Context
         Select
     }
 
-    public class ApplicationContext : IDisposable
+    internal class ApplicationContext : IDisposable
     {
         private readonly string connectionString;
         private readonly StringBuilder query;
         private readonly SqlConnection sqlConnection;
+        private SqlTransaction sqlTransaction;
 
-        public ApplicationContext(string connectionString)
+        internal ApplicationContext(string connectionString)
         {
             this.connectionString = connectionString;
             this.query = new StringBuilder();
             this.sqlConnection = new SqlConnection(this.connectionString);
             this.sqlConnection.Open();
+            this.sqlTransaction = this.sqlConnection.BeginTransaction();
         }
 
         public void Insert<T>(T item)
@@ -38,7 +40,7 @@ namespace ORM.Context
             var memberProperties = Helper.GetMemberProperties(item);
 
             if (Helper.IsNullOrEmptyCollection(memberProperties))
-                throw new Exception("Класс не содержит атрибутов Member необходимых для создания модели");
+                throw new Exception("The class does not contain Member attributes needed to create the model!");
 
             query.Clear();
             query.Append($"insert into {tableName} (");
@@ -51,64 +53,16 @@ namespace ORM.Context
             try
             {
                 command.ExecuteNonQuery();
+
                 var pkProperties = Helper.GetPrimaryKeyProperties(item);
                 if (pkProperties != null)
-                    pkProperties.SetValue(item, command.Parameters["primaryKey"].Value as object);
+                    pkProperties.SetValue(item, command.Parameters["primaryKey"].Value);
             }
             catch (Exception ex)
             {
-                //sqlTransaction.Rollback();
+                sqlTransaction.Rollback();
                 throw new Exception(ex.Message);
             }
-
-            // получили ключ ток что вставленной записи 
-            //var pk = (int)sqlCommand.Parameters["primaryKey"].Value;
-            //return pk;
-
-            /**
-             * 
-            // получаем коллекции объекта
-            var modelCollections = Helpers.Helpers.GetModelCollections(item);
-
-            foreach (var collection in modelCollections)
-            {
-                var collect = collection.GetValue(item) as IEnumerable<object>;
-
-                if (collect != null && collect.Any())
-                {
-                    tableName = Helpers.Helpers.GetTableName(collect.First());
-
-                    foreach (var obj in collect)
-                    {
-                        stringBuilder.Clear();
-                        modelProperties = Helpers.Helpers.GetModelProperties(obj, insertFilter);
-
-                        stringBuilder.Append("insert into " + tableName + "(");
-                        stringBuilder.Append(string.Join(",", modelProperties.Select(x => x.Name)) + ")" + separator);
-                        stringBuilder.Append("values (" + string.Join(",", modelProperties.Select(x => "@" + x.Name)) + ")" + separator);
-
-                        sqlCommand.CommandText = stringBuilder.ToString();
-
-                        if (modelProperties != null && modelProperties.Any())
-                        {
-                            foreach (var prop in modelProperties)
-                            {
-                                var value = prop.GetValue(obj, null);
-                                var isFK = prop.IsDefined(typeof(FKAttribute));
-
-                                if (value != null)
-                                    sqlCommand.Parameters.AddWithValue(prop.Name, isFK ? pk : value);
-                                else
-                                    sqlCommand.Parameters.AddWithValue(prop.Name, DBNull.Value);
-                            }
-                        }
-
-                        sqlCommand.ExecuteNonQuery();
-                        sqlCommand.Parameters.Clear();
-                    }
-                }
-            }
-            */
         }
 
         public void Update<T>(T item)
@@ -118,7 +72,7 @@ namespace ORM.Context
             var pkProperties = Helper.GetPrimaryKeyProperties(item);
 
             if (Helper.IsNullOrEmptyCollection(modelProperties) || pkProperties == null)
-                throw new Exception("Класс не содержит атрибутов Member/PK необходимых для обновленяи модели");
+                throw new Exception("The class does not contain Member and PK attributes necessary for updating the model!");
 
             query.Clear();
             query.Append($"update {tableName} set ");
@@ -133,7 +87,7 @@ namespace ORM.Context
             }
             catch (Exception ex)
             {
-                //sqlTransaction.Rollback();
+                sqlTransaction.Rollback();
                 throw new Exception(ex.Message);
             }
         }
@@ -144,7 +98,7 @@ namespace ORM.Context
             var pkProperties = Helper.GetPrimaryKeyProperties(item);
       
             if (pkProperties == null)
-                throw new Exception("Класс не содержит атрибутов PK необходимых для удаления модели!");
+                throw new Exception("The class does not contain the PK attributes necessary to delete the model!");
 
             this.query.Clear();
             this.query.Append($"delete from {tableName} ");
@@ -158,7 +112,7 @@ namespace ORM.Context
             }
             catch (Exception ex)
             {
-                //sqlTransaction.Rollback();
+                sqlTransaction.Rollback();
                 throw new Exception(ex.Message);
             }
         }
@@ -172,9 +126,9 @@ namespace ORM.Context
             query.Clear();
             query.Append($"select * from {table}");
 
-            SqlCommand cmd = GenerateSqlCommand(type, query.ToString(), Action.Select);
-            SqlDataAdapter da = new SqlDataAdapter { SelectCommand = cmd };
-            DataSet ds = new DataSet();
+            var cmd = GenerateSqlCommand(type, query.ToString(), Action.Select);
+            var da = new SqlDataAdapter { SelectCommand = cmd };
+            var ds = new DataSet();
             da.Fill(ds);
 
             if(ds.Tables[0].Rows.Count > 0)
@@ -182,17 +136,20 @@ namespace ORM.Context
                 var column = ds.Tables[0].Columns;
                 var rows = ds.Tables[0].Rows;
 
-                var collectionObjects = Helper.ConvertToObject<T>(column, rows).FirstOrDefault();
+                var collectionObjects = Helper.ConvertToObject<T>(column, rows);
 
-                var collectionProperties0 = Helper.GetOneToOneProperties(type);
-                var collectionProperties1 = Helper.GetCollectionOneToManyProperties(type);
-                var collectionProperties2 = Helper.GetCollectionManyToManyProperties(type);
+                foreach (var item in collectionObjects)
+                {
+                    var collectionPropertiesOneToOne = Helper.GetPropertiesByRelations<OneToOne>(type);
+                    var collectionPropertiesOneToMany = Helper.GetPropertiesByRelations<OneToMany>(type);
+                    var collectionPropertiesManyToMany = Helper.GetPropertiesByRelations<ManyToMany>(type);
 
-                this.GetOneToOne(collectionProperties0, collectionObjects);
-                this.GetOneToMany(collectionProperties1, collectionObjects);
-                this.GetManyToMany(collectionProperties2, collectionObjects);
+                    this.GetOneToOne(collectionPropertiesOneToOne, item);
+                    this.GetOneToMany(collectionPropertiesOneToMany, item);
+                    this.GetManyToMany(collectionPropertiesManyToMany, item);
 
-                collection.Add(collectionObjects);
+                    collection.Add(item);
+                }
             }
 
             return collection;
@@ -212,7 +169,8 @@ namespace ORM.Context
                 // properties: UserId About
                 var propertiesCollection = typeCollection.GetProperties();
                 // UserId
-                var fk = (item.GetCustomAttribute(typeof(OneToOneAttribute)) as OneToOneAttribute).FKName;
+                var fk = (item.GetCustomAttribute(typeof(OneToOne)) as OneToOne).FKName;
+                var nameFieldToInsert = (item.GetCustomAttribute(typeof(OneToOne)) as OneToOne).Name;
 
                 query.Clear();
                 query.Append($"select {string.Join(", ", propertiesCollection.Select(x => x.Name))} from {typeCollectionName} ");
@@ -220,25 +178,7 @@ namespace ORM.Context
                 query.Append($"where {fk} = {pkObject.GetValue(obj)}");
 
                 var cmd = GenerateSqlCommand(obj, query.ToString(), Action.Select);
-
-                SqlDataAdapter da = new SqlDataAdapter { SelectCommand = cmd };
-                DataSet ds = new DataSet();
-                da.Fill(ds);
-
-                if (ds.Tables[0].Rows.Count > 0)
-                {
-                    var column = ds.Tables[0].Columns;
-                    var rows = ds.Tables[0].Rows;
-
-                    var magicType = Type.GetType("ORM.Helpers.Helper");
-                    var magicMethod = magicType.GetMethod("ConvertToObject").MakeGenericMethod(new Type[] { typeCollection });
-                    var result = magicMethod.Invoke(null, new object[] { column, rows });
-
-                    var convert = (result as IEnumerable<object>).ToList().FirstOrDefault();
-
-                    var nameField = (item.GetCustomAttribute(typeof(OneToOneAttribute)) as OneToOneAttribute).Name;
-                    obj.GetType().GetProperty(nameField).SetValue(obj, convert);
-                }
+                this.AddDataToObject(cmd, typeCollection, nameFieldToInsert, obj, false);
             }
         }
 
@@ -253,11 +193,11 @@ namespace ORM.Context
                 // DB: WorkAddress || Users
                 var typeCollectionName = (typeCollection.GetCustomAttribute(typeof(TableAttribute)) as TableAttribute).Name;
                 // WorkAddress: (Id Address) || User (Id Name)
-                var propertiesCollection = typeCollection.GetProperties().Where(x => Attribute.IsDefined(x, typeof(MemberAttribute))).ToList(); // typeCollection.GetProperties();
+                var propertiesCollection = typeCollection.GetProperties().Where(x => Attribute.IsDefined(x, typeof(MemberAttribute))).ToList();
                 // Id
                 var pkTypeCollection = propertiesCollection.Where(x => Attribute.IsDefined(x, typeof(PKAttribute))).FirstOrDefault().Name;
-
-                var attributes = item.GetCustomAttribute(typeof(ManyToManyAttribute)) as ManyToManyAttribute;
+                // get all Attributes by "item"
+                var attributes = item.GetCustomAttribute(typeof(ManyToMany)) as ManyToMany;
                 // UserWorkAddress
                 var stagingTable = attributes.StagingTable;
                 // UserId
@@ -265,7 +205,7 @@ namespace ORM.Context
                 // WorkAddressId
                 var fkForAnotherObject = attributes.FkForAnotherObject;
                 // куда вставлять 
-                var nameCollectionToInsert = attributes.NameCollection;
+                var nameFieldCollectionToInsert = attributes.NameCollection;
 
                 query.Clear();
                 query.Append($"select {string.Join(", ", propertiesCollection.Select(x => x.Name))} from {typeCollectionName} ");
@@ -273,22 +213,7 @@ namespace ORM.Context
                 query.Append($"where {fkForThisObject} = {pkObject.GetValue(obj)}");
 
                 var cmd = GenerateSqlCommand(obj, query.ToString(), Action.Select);
-
-                SqlDataAdapter da = new SqlDataAdapter { SelectCommand = cmd };
-                DataSet ds = new DataSet();
-                da.Fill(ds);
-
-                if (ds.Tables[0].Rows.Count > 0)
-                {
-                    var column = ds.Tables[0].Columns;
-                    var rows = ds.Tables[0].Rows;
-
-                    var magicType = Type.GetType("ORM.Helpers.Helper");
-                    var magicMethod = magicType.GetMethod("ConvertToObject").MakeGenericMethod(new Type[] { typeCollection });
-                    var result = magicMethod.Invoke(null, new object[] { column, rows });
-
-                    obj.GetType().GetProperty(nameCollectionToInsert).SetValue(obj, result);
-                }
+                this.AddDataToObject(cmd, typeCollection, nameFieldCollectionToInsert, obj);
             }
         }
 
@@ -297,37 +222,44 @@ namespace ORM.Context
             foreach (var item in collectionProperties)
             {
                 var typeCollection = item.PropertyType.GetGenericArguments().First();
-                var collectTable = (item.GetCustomAttribute(typeof(OneToManyAttribute)) as OneToManyAttribute).Name;
+                var nameFieldCollectionToInsert = (item.GetCustomAttribute(typeof(OneToMany)) as OneToMany).Name;
                 var pkProperties = Helper.GetPrimaryKeyProperties(obj);
                 var fkProperties = typeCollection.GetProperties().Where(x => Attribute.IsDefined(x, typeof(FKAttribute))).ToList();
 
                 query.Clear();
-                query.Append($"select * from {collectTable} ");
+                query.Append($"select * from {nameFieldCollectionToInsert} ");
                 query.Append($"where {fkProperties.First().Name} = {pkProperties.GetValue(obj)}");
-                //query.Append($"{this.separator}where{this.separator}{string.Join(" and ", fkProperties.Select(x => x.Name + " = @" + x.Name))}");
 
                 var cmd = GenerateSqlCommand(obj, query.ToString(), Action.Select);
-                SqlDataAdapter da = new SqlDataAdapter { SelectCommand = cmd };
-                DataSet ds = new DataSet();
-                da.Fill(ds);
-
-                if (ds.Tables[0].Rows.Count > 0)
-                {
-                    var column = ds.Tables[0].Columns;
-                    var rows = ds.Tables[0].Rows;
-
-                    var magicType = Type.GetType("ORM.Helpers.Helper");
-                    var magicMethod = magicType.GetMethod("ConvertToObject").MakeGenericMethod(new Type[] { typeCollection });
-                    var result = magicMethod.Invoke(null, new object[] { column, rows });
-
-                    obj.GetType().GetProperty(collectTable).SetValue(obj, result);
-                }
+                this.AddDataToObject(cmd, typeCollection, nameFieldCollectionToInsert, obj);
             }
+        }
+
+        private void AddDataToObject<T>(SqlCommand cmd, Type typeCollection, string nameCollectionToInsert, T obj, bool isCollection = true)
+        {
+            var da = new SqlDataAdapter { SelectCommand = cmd };
+            var ds = new DataSet();
+            da.Fill(ds);
+
+            if (ds.Tables[0].Rows.Count == 0) 
+                return;
+
+            var column = ds.Tables[0].Columns;
+            var rows = ds.Tables[0].Rows;
+
+            var magicType = Type.GetType("ORM.Helpers.Helper");
+            var magicMethod = magicType.GetMethod("ConvertToObject").MakeGenericMethod(new Type[] { typeCollection });
+            var result = magicMethod.Invoke(null, new object[] { column, rows });
+
+            if (!isCollection)
+                result = (result as IEnumerable<object>).ToList().FirstOrDefault();
+
+            obj.GetType().GetProperty(nameCollectionToInsert).SetValue(obj, result);
         }
 
         private SqlCommand GenerateSqlCommand<T>(T item, string query, Action action, params IEnumerable<PropertyInfo>[] properties)
         {
-            var command = new SqlCommand(query, this.sqlConnection);
+            var command = new SqlCommand(query, this.sqlConnection, this.sqlTransaction);
 
             if (action == Action.Select)
                 return command;
@@ -345,16 +277,20 @@ namespace ORM.Context
             }
 
             if (action == Action.Insert)
-            {
                 command.Parameters.Add("primaryKey", SqlDbType.Int).Direction = ParameterDirection.Output;
-            }
 
             return command;
         }
 
+        public void Commit()
+        {
+            this.sqlTransaction.Commit();
+        }
+
         public void Dispose()
         {
-            sqlConnection.Close();
+            this.sqlTransaction.Dispose();
+            this.sqlConnection.Close();
         }
     }
 }
