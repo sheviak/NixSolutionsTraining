@@ -1,0 +1,30 @@
+﻿@model Task4.Models.CustomUser
+
+@{
+    ViewData["Title"] = "Login";
+}
+
+<h1>Login</h1>
+
+@using (Html.BeginForm())
+{
+    @Html.AntiForgeryToken()
+    <div class="row pl-3">
+        <div class="center-blok">
+            <div class="form-group">
+                <label asp-for="Email">Email</label>
+                <input asp-for="Email" type="email" class="form-control" aria-describedby="emailHelp" placeholder="Entry Email">
+                <small id="emailHelp" class="form-text text-muted">Do not give information about your personal data to anyone.</small>
+            </div>
+            <div class="form-group">
+                <label asp-for="Password">Password</label>
+                <input asp-for="Password" type="password" class="form-control" placeholder="Password">
+            </div>
+            <button type="submit" class="btn btn-primary">Вход</button>
+        </div>
+    </div>
+}
+
+<div>
+    <a asp-action="Index">Back to List</a>
+</div>

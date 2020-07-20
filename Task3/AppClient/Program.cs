@@ -16,8 +16,8 @@ namespace AppClient
 
                 try
                 {
-                    repository.Insert(obj);
-                    repository.Commit();
+                    //repository.Insert(obj);
+                    // repository.Commit();
 
                     var temp = repository.Select();
                 } 
